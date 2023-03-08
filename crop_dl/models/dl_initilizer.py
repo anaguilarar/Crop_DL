@@ -6,9 +6,12 @@ import os
 class DLInstanceModel:
     
     def __init__(self, weights = None, modeltype = "instance_segmentation",
-                 lr = 0.005) -> None:
+                 lr = 0.005, device = None) -> None:
         
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        if device is None:
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
         
         if modeltype == "instance_segmentation":
             model = get_instance_segmentation_model(2).to(self.device)

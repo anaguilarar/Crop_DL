@@ -45,7 +45,8 @@ class RiceSeedsCounting(object):
     
     def __init__(self, imagepath, model, 
                  inputsize = (512,512), 
-                 imagessuffix = ".jpg") -> None:
+                 imagessuffix = ".jpg",
+                 device = None) -> None:
         
         
         self.predictions  = None
@@ -59,7 +60,11 @@ class RiceSeedsCounting(object):
                           if i.endswith(imagessuffix)]
         
         self.model = model
-        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        
+        if device is None:
+            self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
     
     def evaluate_predictions_by_users(self):
         from matplotlib.pyplot import plot, ion, show, close
