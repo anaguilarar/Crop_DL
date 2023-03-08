@@ -21,7 +21,11 @@ class DLInstanceModel:
 
         if weights:
             if os.path.exists(weights):
-                model_state, optimizer_state = torch.load(
+                if self.device == "cpu":              
+                    model_state, optimizer_state = torch.load(
+                    weights, map_location=self.device)
+                else:
+                    model_state, optimizer_state = torch.load(
                     weights)
                 
                 model.load_state_dict(model_state)
