@@ -148,7 +148,7 @@ class RiceSeedsCounting(object):
         self.bbs = np.array(bbsc)
         
     
-    def detect_rice(self, id, threshold = 0.75, segment_threshold = 180, initialsize = False):
+    def detect_rice(self, id, threshold = 0.75, segment_threshold = 180, keepsize = False):
         
         imgpath = os.path.join(self.path, self.listfiles[id])
         self.img = cv2.imread(imgpath)
@@ -173,7 +173,7 @@ class RiceSeedsCounting(object):
         self.bbs = pred[1]
         self._frames_colors = random_colors(len(self.bbs))
         
-        if initialsize:
+        if keepsize:
             self._original_size()
             self._img = self.img
         else:
@@ -275,9 +275,8 @@ class RiceSeedsCounting(object):
             'seed_id':[seed_id],'height': [larger], 
                 'width': [shorter], 'area': [area]}
         
-    def seeds_summary(self):
+    def one_image_seeds_summary(self):
         import pandas as pd
-        
         summarylist = []
         for i in range(len(self.bbs)):
             summarylist.append(
@@ -285,6 +284,28 @@ class RiceSeedsCounting(object):
 
         return pd.concat(summarylist)
     
+    def all_image_seeds_summary(self, keepsize = True, segment_threshold = 170):
+        import pandas as pd
+        alldata = []
+        for i in range(len(self.listfiles)):
+            self.detect_rice(i, keepsize=keepsize, 
+                             segment_threshold = segment_threshold)
+            
+            alldata.append(self.one_image_seeds_summary())
+
+        return pd.concat(alldata)
+    
+    def all_image_predictions(self, keepsize = True, segment_threshold = 170):
+        
+        alldata = []
+        for i in range(len(self.listfiles)):
+            self.detect_rice(i, keepsize=keepsize, 
+                             segment_threshold = segment_threshold)
+            
+            m = self.plot_prediction(only_image=True)
+            alldata.append(m[:,:,[2,1,0]])
+
+        return alldata
         
     def _add_metriclines_to_single_detection(self, 
                                              seed_id, 
