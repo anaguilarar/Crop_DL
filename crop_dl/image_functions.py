@@ -191,7 +191,7 @@ def image_zoom(img, zoom_factor=0, channels_first = False, paddlingvalue = 0):
             newimg = np.zeros(newshape).astype(img.dtype)
         else:
             newimg = np.ones(newshape).astype(img.dtype) * paddlingvalue
-            
+          
         pad_height1, pad_width1 = abs(new_height - height) // 2, abs(new_width - width) //2
         newimg[pad_height1:(height+pad_height1), pad_width1:(width+pad_width1)] = img
         

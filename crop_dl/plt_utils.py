@@ -79,7 +79,7 @@ def add_frame_label(imgc,
     return imgc
             
 
-def draw_frame(img, bbbox, dictlabels = None, default_color = True, bbtype = None, 
+def draw_frame(img, bbbox, dictlabels = None, default_color = None, bbtype = None, 
                sizefactorred = 200, bb_thickness = 4):
     imgc = img.copy()
     

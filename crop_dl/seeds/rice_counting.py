@@ -6,6 +6,7 @@ import pycocotools.mask as mask_util
 import cv2
 import datetime
 import math
+import tqdm
 
 from .configuration import RiceDetectionConfig
 from .utils import decode_masks, euclidean_distance, getmidleheightcoordinates, getmidlewidthcoordinates
@@ -249,8 +250,8 @@ class RiceSeedsCounting(object):
         imgdata = {"id":self.idimg,
                    "license":1,
                    "file_name":self.listfiles[self.idimg],
-                   "height":binarymask.shape[1],
-                   "width":binarymask.shape[0],
+                   "height":self.msks_preds[0].shape[1],
+                   "width":self.msks_preds[0].shape[0],
                    "date_captured":datetime.datetime.now().strftime("%Y-%m-%d")
                    }
 
@@ -261,15 +262,19 @@ class RiceSeedsCounting(object):
         
         return self._add_metriclines_to_single_detection(seed_id, **kwargs)
 
-    def calculate_oneseed_metrics(self, seed_id):
+    def calculate_oneseed_metrics(self, seed_id, padding = 20):
 
         #imageres = self._imgastensor.mul(255).permute(1, 2, 0).byte().numpy()
 
-        maskimage = self._clip_image(self.msks[seed_id], self.bbs[seed_id], padding = 2)
+        maskimage = self._clip_image(self.msks[seed_id], self.bbs[seed_id], padding = padding)
         wrapped_box = self._find_contours(maskimage)
-        distper = np.unique([euclidean_distance(wrapped_box[i],wrapped_box[i+1]) for i in range(len(wrapped_box)-1) ])
-        larger = distper[0] if distper[0]>distper[1] else distper[1]
-        shorter = distper[0] if distper[0]<distper[1] else distper[1]
+        pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(wrapped_box)
+        d1 = euclidean_distance(pheightu, pheigthb)
+        d2 = euclidean_distance(pwidthu, pwidthb)
+        #distper = np.unique([euclidean_distance(wrapped_box[i],wrapped_box[i+1]) for i in range(len(wrapped_box)-1) ])
+        ## with this statement there is an assumption that the rice width is always lower than height
+        larger = d1 if d1>d2 else d2
+        shorter = d1 if d1<d2 else d2
         msksones = maskimage.copy()
         msksones[msksones>0] = 1
         
@@ -289,23 +294,25 @@ class RiceSeedsCounting(object):
 
         return pd.concat(summarylist)
     
-    def all_image_seeds_summary(self, keepsize = True, segment_threshold = 170):
+    def all_image_seeds_summary(self, keepsize = True, segment_threshold = 170, threshold = 0.65):
         import pandas as pd
         alldata = []
-        for i in range(len(self.listfiles)):
+        for i in tqdm.tqdm(range(len(self.listfiles))):
             self.detect_rice(i, keepsize=keepsize, 
-                             segment_threshold = segment_threshold)
+                             segment_threshold = segment_threshold,
+                             threshold=threshold)
             
             alldata.append(self.one_image_seeds_summary())
 
         return pd.concat(alldata)
     
-    def all_image_predictions(self, keepsize = True, segment_threshold = 170):
+    def all_image_predictions(self, keepsize = True, segment_threshold = 170, threshold = 0.65):
         
         alldata = []
-        for i in range(len(self.listfiles)):
+        for i in tqdm.tqdm(range(len(self.listfiles))):
             self.detect_rice(i, keepsize=keepsize, 
-                             segment_threshold = segment_threshold)
+                             segment_threshold = segment_threshold, 
+                             threshold = threshold)
             
             m = self.plot_prediction(only_image=True)
             alldata.append(m[:,:,[2,1,0]])
