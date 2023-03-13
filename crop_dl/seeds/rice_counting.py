@@ -307,7 +307,8 @@ class RiceSeedsCounting(object):
         print(f"Saving in: {outputpath}")
         
         for i, img in enumerate(images):
-            cv2.imwrite(os.path.join(outputpath,"pred_{}".format(self.listfiles[i])), img)
+            cv2.imwrite(os.path.join(outputpath,"pred_{}".format(
+                self.listfiles[i])), img[:,:,[2,1,0]])
         
         if saveaszip:
             with zipfile.ZipFile(outputpath + '.zip', 'w') as f:
