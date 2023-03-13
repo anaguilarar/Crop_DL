@@ -15,6 +15,9 @@ from ..plt_utils import plot_segmenimages, random_colors, add_frame_label
 from ..dataset import cocodataset_dict_style
 from ..image_functions import contours_from_image, pad_images
 from ..dataset_utils import get_boundingboxfromseg
+import zipfile
+import glob
+
 
 def image_to_tensor(img, size):
     
@@ -293,6 +296,25 @@ class RiceSeedsCounting(object):
                 pd.DataFrame(self.calculate_oneseed_metrics(i)))
 
         return pd.concat(summarylist)
+    
+    def export_all_imagery_predictions(self, outputpath = None, saveaszip = False, **kwargs):
+        
+        if not os.path.exists(outputpath):
+            os.mkdir(outputpath)
+        
+        images = self.all_image_predictions(**kwargs)
+        
+        print(f"Saving in: {outputpath}")
+        
+        for i, img in enumerate(images):
+            cv2.imwrite(os.path.join(outputpath,"pred_{}".format(self.listfiles[i])), img)
+        
+        if saveaszip:
+            with zipfile.ZipFile(outputpath + '.zip', 'w') as f:
+                for file in glob.glob(outputpath + '/*'):
+                    f.write(file)
+        
+        
     
     def all_image_seeds_summary(self, keepsize = True, segment_threshold = 170, threshold = 0.65):
         import pandas as pd
