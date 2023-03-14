@@ -84,7 +84,7 @@ class RiceSeedsCounting(object):
         
         evaluation_method = input()       
         imgtoplot = self._imgastensor.mul(255).permute(1, 2, 0).byte().numpy()
-
+        onlythesepos = []
         if evaluation_method == "1":
             minthreshold = input("the mininmum score (0-1): ")
             maxthreshold = input("the maximum score (0-1): ")
@@ -104,7 +104,7 @@ class RiceSeedsCounting(object):
                 
                 
                 ion()
-                f = plot_segmenimages((imgtoplot).astype(np.uint8)[:,:,[2,1,0]],
+                f = plot_segmenimages((imgtoplot).astype(np.uint8),
                                       mks, 
                         boxes=[bb.astype(np.uint16)], 
                         bbtype = 'xminyminxmaxymax')
@@ -117,7 +117,10 @@ class RiceSeedsCounting(object):
                 if response == "3":
                     break
             
-        print(f"in total {len(onlythesepos)} segmentations are correct")
+        print(f"in total {len(self.predictions[0]['boxes'].cpu().detach().numpy()[onlythesepos])} segmentations are correct")
+        #print()
+        
+        msks = np.zeros((imgtoplot).astype(np.uint8).shape[:2])
         msks_preds = self.predictions[0]['masks'].mul(255).byte().cpu().numpy()[onlythesepos, 0].squeeze()
         bbs_preds = self.predictions[0]['boxes'].cpu().detach().numpy()[onlythesepos]
         
@@ -128,16 +131,28 @@ class RiceSeedsCounting(object):
                 msks = np.max(msks_preds, axis = 0)
         
         ion()
-        f = plot_segmenimages((imgtoplot).astype(np.uint8)[:,:,[2,1,0]],msks, 
+        f = plot_segmenimages((imgtoplot).astype(np.uint8),msks, 
                         boxes=bbs_preds.astype(np.uint16), 
                         bbtype = 'xminyminxmaxymax')
         response = input("is this prediction correct (1-yes ; 2-no): ")
         f.show()
         close()
         if response == "2":
-            response = input("do you want to repeat (1-yes ; 2-no): ")
-            if response == "1":
-                self.evaluate_predictions_by_users()
+            trueresponse= True
+            
+            while trueresponse:
+                response = input("do you want to repeat (1-yes ; 2-no): ")
+                if response == "1":
+                    trueresponse = False
+                    self.evaluate_predictions_by_users()
+                elif response == "2":
+                    trueresponse = False
+                    msks_preds = np.zeros((imgtoplot).astype(np.uint8).shape[:2])
+                    bbs_preds = []
+                    self.msks_preds = msks_preds
+                    self.bbs_preds = bbs_preds
+                print("The option is not valid, try again")
+                
         else:
             self.msks_preds = msks_preds
             self.bbs_preds = bbs_preds
@@ -146,12 +161,17 @@ class RiceSeedsCounting(object):
     
     def _original_size(self):
         msksc = [0]* len(list(self.msks))
+        
         bbsc = [0]* len(list(self.bbs))
+        
         for i in range(len(self.msks)):
             msksc[i] = cv2.resize(self.msks[i], 
                                   [self.img.shape[1],self.img.shape[0]], 
-                                  interpolation = cv2.INTER_AREA)        
-            bbsc[i] = get_boundingboxfromseg(msksc[i])
+                                  interpolation = cv2.INTER_AREA)  
+            if len(bbsc)>0:
+                bbsc[i] = get_boundingboxfromseg(msksc[i])
+            #else:
+            #    bbsc[i] = []
         
         self.msks = np.array(msksc)
         self.bbs = np.array(bbsc)
@@ -292,10 +312,17 @@ class RiceSeedsCounting(object):
         import pandas as pd
         summarylist = []
         for i in range(len(self.bbs)):
-            summarylist.append(
+            try: 
+                summarylist.append(
                 pd.DataFrame(self.calculate_oneseed_metrics(i)))
-
-        return pd.concat(summarylist)
+            except:
+                pass
+        if len(summarylist) > 0:
+            summarylist = pd.concat(summarylist)
+        else:
+            summarylist = None
+            
+        return summarylist
     
     def export_all_imagery_predictions(self, outputpath = None, saveaszip = False, **kwargs):
         
@@ -324,22 +351,30 @@ class RiceSeedsCounting(object):
             self.detect_rice(i, keepsize=keepsize, 
                              segment_threshold = segment_threshold,
                              threshold=threshold)
-            
-            alldata.append(self.one_image_seeds_summary())
-
-        return pd.concat(alldata)
+            seedtable = self.one_image_seeds_summary()
+            if seedtable is not None:
+                alldata.append(self.one_image_seeds_summary())
+        if len(alldata)>0:
+            alldata = pd.concat(alldata)
+        else:
+            print("no seeds detected!!")
+            alldata = None
+        return alldata
     
     def all_image_predictions(self, keepsize = True, segment_threshold = 170, threshold = 0.65):
         
         alldata = []
         for i in tqdm.tqdm(range(len(self.listfiles))):
+
             self.detect_rice(i, keepsize=keepsize, 
-                             segment_threshold = segment_threshold, 
-                             threshold = threshold)
+                            segment_threshold = segment_threshold, 
+                            threshold = threshold)
             
             m = self.plot_prediction(only_image=True)
             alldata.append(m[:,:,[2,1,0]])
-
+            #except:
+            #    alldata.append(m[:,:,[2,1,0]])
+            
         return alldata
         
     def _add_metriclines_to_single_detection(self, 

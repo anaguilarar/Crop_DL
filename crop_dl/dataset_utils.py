@@ -179,6 +179,7 @@ def _generate_shiftparams(img, max_displacement = None, xshift = None,yshift = N
 
     return max_displacement, xshift, yshift
 
+
 class ImageAugmentation(object):
 
     @property
@@ -230,11 +231,23 @@ class ImageAugmentation(object):
                     params[i] = default_params[i]        
             
         return params    
-        
+    
+    #['flip','zoom','shift','rotation']
     def multi_transform(self, img = None, 
-                        chain_transform = ['flip','zoom','shift','rotation'],
+                        chain_transform = None,
                          params = None, update = True):
 
+        if chain_transform is None:
+            if self._multitr_chain is not None:
+                chain_transform = self._multitr_chain
+            else:
+                chain_transform = []
+                while len(chain_transform) <= 3:
+                    trname = random.choice(list(self._run_default_transforms.keys()))
+                    if trname != 'multitr':
+                        chain_transform.append(trname)
+                self._multitr_chain = chain_transform
+                 
         if img is None:
             img = self.img_data
 
@@ -246,14 +259,17 @@ class ImageAugmentation(object):
                      img = imgtr,
                      update = False)
             else:
+                
                 imgtr = perform(self._run_default_transforms[i],
                      imgtr,
                      params[i], False)
-
+            #if update:
             augmentedsuffix[i] = self._transformparameters[i]
         
         self._transformparameters['multitr'] = augmentedsuffix
+         
         if update:
+            
             self.updated_paramaters(tr_type = 'multitr')
             self._new_images['multitr'] = imgtr
 
@@ -273,7 +289,9 @@ class ImageAugmentation(object):
         
         imgtr = image_rotation(img,angle = angle)
         self._transformparameters['rotation'] = angle
+        
         if update:
+            
             self.updated_paramaters(tr_type = 'rotation')
             self._new_images['rotation'] = imgtr
 
@@ -286,9 +304,10 @@ class ImageAugmentation(object):
             hsvparams = self._random_parameters['hsv']
             
         imgtr,_ = shift_hsv(img,hue_shift=hsvparams[0], sat_shift = hsvparams[1], val_shift = hsvparams[2])
-        self._transformparameters['hsv'] = hsvparams
         
+        self._transformparameters['hsv'] = hsvparams
         if update:
+            
             self.updated_paramaters(tr_type = 'hsv')
             self._new_images['hsv'] = imgtr
 
@@ -303,8 +322,11 @@ class ImageAugmentation(object):
 
         
         imgtr = image_flip(img,flipcode = flipcode)
+        
         self._transformparameters['flip'] = flipcode
+        
         if update:
+            
             self.updated_paramaters(tr_type = 'flip')
             self._new_images['flip'] = imgtr
 
@@ -318,8 +340,10 @@ class ImageAugmentation(object):
             img = copy.deepcopy(self.img_data)
             
         imgtr = image_zoom(img, zoom_factor=ratio)
+        
         self._transformparameters['zoom'] = ratio
         if update:
+            
             self.updated_paramaters(tr_type = 'zoom')
             self._new_images['zoom'] = imgtr
 
@@ -342,9 +366,10 @@ class ImageAugmentation(object):
         imgtr, displacement =  randomly_displace(img, 
                                                  maxshift = max_displacement, 
                                                  xshift = xshift, yshift = yshift)
-
+        
         self._transformparameters['shift'] = displacement
         if update:
+            
             self.updated_paramaters(tr_type = 'shift')
             self._new_images['shift'] = imgtr#.astype(np.uint8)
 
@@ -359,11 +384,13 @@ class ImageAugmentation(object):
             img = copy.deepcopy(self.img_data)
 
         imgtr,_ = clahe_img(img, clip_limit=thr_constrast)
-
+        
         self._transformparameters['clahe'] = thr_constrast
         if update:
+            
             self.updated_paramaters(tr_type = 'clahe')
             self._new_images['clahe'] = imgtr
+            
         return imgtr
 
     def random_augmented_image(self,img= None, update = True):
@@ -406,7 +433,7 @@ class ImageAugmentation(object):
 
         return augmentedsuffix
 
-    def __init__(self, img, random_parameters = None) -> None:
+    def __init__(self, img, random_parameters = None, multitr_chain = None) -> None:
 
         self.img_data = None
         if isinstance(img, str):
@@ -418,6 +445,7 @@ class ImageAugmentation(object):
         self._new_images = {}
         self.tr_paramaters = {}
         self._init_random_parameters = random_parameters
+        self._multitr_chain = multitr_chain
 
 class ImageData(ImageAugmentation):
     
@@ -646,12 +674,6 @@ def scale_mtdata(npdata,
     return datascaled
 
 
-def perform(fun, *args):
-    return fun(*args)
-
-def perform_kwargs(fun, **kwargs):
-    return fun(**kwargs)
-
 class SegmentationImages(ImageData):
 
     
@@ -784,8 +806,15 @@ class InstanceSegmentation(ImageData):
     def bounding_boxes(self):
         boxes = {}
         for imgtype in list(self.target_data.keys()):
-            boxes[imgtype] = np.array(
-                [get_boundingboxfromseg(mask) for mask in self.target_data[imgtype]])
+            bbs = []
+            todelete = []
+            for i,mask in enumerate(self.target_data[imgtype]):
+                if np.sum(mask)>0:
+                    bbs.append(get_boundingboxfromseg(mask))
+                else:
+                  todelete.append(i)
+                    
+            boxes[imgtype] = np.array(bbs)
             
         return boxes
             
@@ -842,14 +871,30 @@ class InstanceSegmentation(ImageData):
         for i,mask in enumerate(self._mask_imgid):
             
             if tr_name == 'multitr':
+                
                 params = self.tr_paramaters[tr_name]
-                trmask[i] = self.multi_transform(img=mask,
-                                    chain_transform = list(params.keys()),
-                                    params= params, update= False)
+                paramslist = [partr for partr in list(params.keys()) if partr not in self._list_not_transform]
+                filteredparams = {}
+                for partr in paramslist:
+                    filteredparams[partr] = params[partr]
+                    
+                imgtr = mask.copy()
+
+                for partr in paramslist:
+                    #print(partr)
+                    imgtr = perform(self._run_default_transforms[partr],
+                            imgtr,
+                            params[partr], False)
+                
+                trmask[i] = imgtr
+
+                #trmask[i] = self.multi_transform(img=mask.copy(),
+                #                    chain_transform = paramslist,
+                #                    params= filteredparams, update= False)
 
             else:
                 trmask[i]  =  perform(self._run_default_transforms[tr_name],
-                        mask,
+                        mask.copy(),
                         self.tr_paramaters[tr_name], False)
 
         return trmask
@@ -861,7 +906,14 @@ class InstanceSegmentation(ImageData):
         if len(trids)> 1:
             for i in range(1,len(trids)):
                 if trids[i] not in self._list_not_transform:
-                    newimgs[trids[i]] = self.tranform_function(trids[i])
+                    newtr = self.tranform_function(trids[i])
+                    filtered = []
+                    for indtr in newtr:
+                        if np.sum(indtr)>0:
+                            #print(np.sum(indtr>0)/(newtr.shape[1]*newtr.shape[2]))
+                            if np.sum(indtr>0)/(newtr.shape[1]*newtr.shape[2])>0.0015:
+                                filtered.append(indtr)
+                        newimgs[trids[i]] = np.array(filtered)
 
                 else:
                     newimgs[trids[i]] = self._mask_imgid

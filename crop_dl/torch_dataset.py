@@ -30,7 +30,8 @@ class InstaSegemenTorchDataset(Dataset):
                  channelsfirst = True,
                  meanstd_imgs = None,
                  valaugoptions = None,
-                 random_transform_params = None):
+                 random_transform_params = None,
+                 multitr_chain = ['flip','clahe','rotation','zoom']):
         
         
         self.root_dir = root_dir
@@ -41,6 +42,7 @@ class InstaSegemenTorchDataset(Dataset):
         self.channelsfirst =channelsfirst
         self.valaugoptions = valaugoptions
         self.random_transform_params = random_transform_params 
+        self.multitr_chain =multitr_chain
         if meanstd_imgs is not None:
             self.normalize = T.Normalize(meanstd_imgs[0], meanstd_imgs[1])
         else:
@@ -54,7 +56,8 @@ class InstaSegemenTorchDataset(Dataset):
         from crop_dl.dataset_utils import InstanceSegmentation
         instancedata = InstanceSegmentation(self.root_dir ,
                                             self.cococataset,index,
-                                            random_parameters = self.random_transform_params)
+                                            random_parameters = self.random_transform_params,
+                                            multitr_chain = self.multitr_chain)
         troption = 'raw'
         if self.evaluation:
             randtr = instancedata.random_multime_transform(augfun='raw')

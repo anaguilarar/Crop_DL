@@ -5,7 +5,7 @@ import random
 import pandas as pd
 from sklearn.model_selection import KFold
 import json
-
+import copy
 
 def split_dataintotwo(data, idsfirst, idssecond):
 
@@ -160,3 +160,102 @@ def cocodataset_dict_style(imagesdict,
         
     return jsondataset
 
+
+### coco update
+
+
+def update_cocotrainingdataset(cocodatasetpath, newdata_images, newdata_anns):
+    
+    if os.path.exists(cocodatasetpath):
+        with open(cocodatasetpath, 'r') as fn:
+            previousdata = json.load(fn)
+    else:
+        previousdata = None
+    
+    if previousdata is not None:
+        #newdatac = copy.deepcopy(newdata)
+
+        #newdatac = copy.deepcopy(newdata)
+        previousdatac = copy.deepcopy(previousdata)
+
+        if isinstance(previousdatac["images"], dict):
+            previousdatac["images"] = [previousdatac["images"]]
+        
+        if isinstance(previousdatac["annotations"], dict):
+            previousdatac["annotations"] = [previousdatac["annotations"]]
+            
+        oldimageslist = copy.deepcopy(previousdatac["images"])
+        oldannslist = copy.deepcopy(previousdatac["annotations"])
+        
+        if isinstance(newdata_images, dict):
+            newimageslist = [copy.deepcopy(newdata_images)]
+        else:
+            newimageslist = copy.deepcopy(newdata_images)
+
+        if isinstance(newdata_anns, dict):
+            newannslist = [copy.deepcopy(newdata_anns)]
+        else:
+            newannslist = copy.deepcopy(newdata_anns)
+
+        
+        lastid = oldimageslist[len(oldimageslist)-1]['id']+1
+        lastidanns = oldannslist[len(oldannslist)-1]['id']+1
+        #print(oldannslist[0]['image_id'])
+        for i, newimage in enumerate(newimageslist):
+            previousid = newimage['id']
+            newimage['id']  = lastid
+
+            for j, newann in enumerate(newannslist):
+                if isinstance(newann, list):
+                    for k in range(len(newann)):
+                        if newann[k]['image_id'] == previousid:
+                            newann[k]['image_id'] = lastid
+                            newann[k]['id'] = lastidanns
+                            lastidanns+=1
+                            
+                else:
+
+                    if newann['image_id'] == previousid:
+                        newann['image_id'] = lastid
+                        newann['id'] = lastidanns
+                        lastidanns+=1
+            lastid+=1
+        
+        #if len(newimageslist) == 1:
+        #    newannslist = [newannslist]
+        for newimage in newimageslist:
+            previousdatac["images"].append(newimage)
+        
+        if isinstance(newannslist, list):
+            for newann in newannslist:
+                previousdatac["annotations"].append(newann)
+        else:
+            previousdatac["annotations"].append(newannslist)
+                
+    else:
+        
+        previousdatac = cocodataset_dict_style(newdata_images, newdata_anns)
+        
+        #previousdatac = copy.deepcopy(newdata)
+        
+    return previousdatac
+
+def merge_trainingdataset(prev_cocodatasetpath, new_cocodatasetpath):
+    
+    if os.path.exists(new_cocodatasetpath):
+    
+        with open(new_cocodatasetpath, 'r') as fn:
+            newdata = json.load(fn)
+        
+        newdatac = copy.deepcopy(newdata)
+        
+        newannslist = newdatac["annotations"]
+        newimageslist = newdatac["images"]
+        
+        previousdatac = update_cocotrainingdataset(prev_cocodatasetpath,
+                                                   newimageslist, newannslist)
+        
+        print(len(newimageslist)," new images were added")
+        print(len(newannslist)," new annotations were added")
+        
+    return previousdatac
