@@ -274,12 +274,12 @@ class RiceSeedsCounting(object):
         
         return self._add_metriclines_to_single_detection(seed_id, **kwargs)
 
-    def calculate_oneseed_metrics(self, seed_id, padding = 20):
+    def calculate_oneseed_metrics(self, seed_id, padding = 20, hull = False):
 
         #imageres = self._imgastensor.mul(255).permute(1, 2, 0).byte().numpy()
 
         maskimage = self._clip_image(self.msks[seed_id], self.bbs[seed_id], padding = padding)
-        wrapped_box = self._find_contours(maskimage)
+        wrapped_box = self._find_contours(maskimage, hull = hull)
         pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(wrapped_box)
         d1 = euclidean_distance(pheightu, pheigthb)
         d2 = euclidean_distance(pwidthu, pwidthb)
@@ -373,8 +373,10 @@ class RiceSeedsCounting(object):
                     mask_image = False,
                     sizefactorred = 250,
                     heightframefactor = .15,
-                    widthframefactor = .3,
-                    textthickness = 1):
+                    widthframefactor = .3, 
+                    hull = False,
+                    textthickness = 1,
+                    linethickness = 1):
         
         import copy
         if self._frames_colors is None:
@@ -382,7 +384,8 @@ class RiceSeedsCounting(object):
             
         col = self._frames_colors[seed_id]
         imageres = self._img
-        imgclipped = copy.deepcopy(self._clip_image(imageres, self.bbs[seed_id], padding = padding,paddingwithzeros = False))
+        imgclipped = copy.deepcopy(self._clip_image(imageres, self.bbs[seed_id], 
+                                                    padding = padding,paddingwithzeros = False))
         maskimage = copy.deepcopy(self._clip_image(self.msks[seed_id], 
                                                                self.bbs[seed_id], padding = padding,paddingwithzeros = False))
 
@@ -398,11 +401,13 @@ class RiceSeedsCounting(object):
         img = _apply_mask(newimg, (msksones).astype(np.uint8), col, alpha=0.2)
         
         linecolor = list((np.array(col)*255).astype(np.uint8))
-        m = cv2.drawContours(img,[self._find_contours(maskimage)],0,[int(i) for i in linecolor],1)
+        m = cv2.drawContours(img,[self._find_contours(maskimage, hull = hull)],0,[int(i) for i in linecolor],
+                             linethickness)
         if addlines:
-            pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(self._find_contours(maskimage))
-            m = cv2.line(m, pheightu, pheigthb, (0,0,0), 1)
-            m = cv2.line(m, pwidthu, pwidthb, (0,0,0), 1)
+            pheightu, pheigthb, pwidthu, pwidthb = self._get_heights_and_widths(
+                self._find_contours(maskimage, hull = hull))
+            m = cv2.line(m, pheightu, pheigthb, (0,0,0), linethickness)
+            m = cv2.line(m, pwidthu, pwidthb, (0,0,0), linethickness)
         
         if addlabel:
             
@@ -461,11 +466,17 @@ class RiceSeedsCounting(object):
         return imgclipped
 
     @staticmethod 
-    def _find_contours(image):
+    def _find_contours(image, hull = False):
         maskimage = image.copy()
         #imgmas = (maskimage*255).astype(np.uint8)
         contours = contours_from_image(maskimage)
-        rect = cv2.minAreaRect(contours[0])
+        
+        if hull:
+            firstcontour = cv2.convexHull(contours[0])
+        else:
+            firstcontour = contours[0]
+        
+        rect = cv2.minAreaRect(firstcontour)
         box = cv2.boxPoints(rect)
         box = np.int0(box)
         return box
