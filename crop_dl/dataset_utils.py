@@ -1,6 +1,5 @@
 
 import random
-from pycocotools.coco import COCO
 
 from .image_functions import image_rotation,image_zoom,randomly_displace,clahe_img, image_flip,shift_hsv
 from .plt_utils import plot_segmenimages
@@ -785,6 +784,7 @@ class SegmentationImages(ImageData):
 
 class InstanceSegmentation(ImageData):
     
+    
     _cocosuffix = '.json'
     ### available
     #rotation': self.rotate_image,
@@ -945,6 +945,8 @@ class InstanceSegmentation(ImageData):
         
     def __init__(self, input_path, annotation, img_id = None, 
                     cocodataset = True, **kwargs) -> None:
+        
+        from pycocotools.coco import COCO
         
         
         self.input_path = input_path

@@ -1,4 +1,4 @@
-import pycocotools.mask as mask_util
+
 import numpy as np
 import math
 
@@ -9,7 +9,7 @@ def euclidean_distance(p1,p2):
 
 
 def decode_masks(mask):
-    
+    import pycocotools.mask as mask_util
     if len(mask.shape) == 3:
         msk = mask[:,:,0]
     else:

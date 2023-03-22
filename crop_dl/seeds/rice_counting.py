@@ -11,28 +11,17 @@ import tqdm
 from .configuration import RiceDetectionConfig
 from .utils import decode_masks, euclidean_distance, getmidleheightcoordinates, getmidlewidthcoordinates
 
+from ..models.utils import image_to_tensor
 from ..plt_utils import plot_segmenimages, random_colors, add_frame_label
 from ..dataset import cocodataset_dict_style
 from ..image_functions import contours_from_image, pad_images
 from ..dataset_utils import get_boundingboxfromseg
+
 import zipfile
 import glob
 
 
-def image_to_tensor(img, size):
-    
-    if img.shape[0] != size[0] or img.shape[1] != size[1]:
-        resimg = cv2.resize(img.copy(), size)
-    else:
-        resimg = img.copy()
-    
-    #resimg
-    if resimg.shape[0] != 3:
-        imgtensor = torch.from_numpy(resimg.swapaxes(2,1).swapaxes(0,1)/255).float()
-    elif resimg.shape[0] == 3:
-        imgtensor = torch.from_numpy(resimg/255).float()
-        
-    return imgtensor    
+
 
 def _apply_mask(image, mask, color, alpha=0.5):
     """Apply the given mask to the image.

@@ -4,7 +4,8 @@ from urllib.parse import urlparse
 import os
 import zipfile
 from io import BytesIO
-
+import cv2
+import torch
 
 def filter_files_usingsuffix(filesinside, path, suffix = 'pt'):
     """
@@ -75,3 +76,21 @@ def check_weigth_path(path, suffix = 'h5', weights_path = 'weights'):
         path = filter_files_usingsuffix(filesinside, weights_path, suffix=suffix)
     
     return path
+
+def image_to_tensor(img, size):
+    
+    if img.shape[0] == 3:
+        img = img.swapaxes(0,1).swapaxes(1,2)
+        
+    if img.shape[0] != size[0] or img.shape[1] != size[1]:
+        resimg = cv2.resize(img.copy(), size)
+    else:
+        resimg = img.copy()
+    
+    #resimg
+    if resimg.shape[0] != 3:
+        imgtensor = torch.from_numpy(resimg.swapaxes(2,1).swapaxes(0,1)/255).float()
+    elif resimg.shape[0] == 3:
+        imgtensor = torch.from_numpy(resimg/255).float()
+        
+    return imgtensor     
