@@ -27,7 +27,7 @@ def pad_images(mask, padding_factor = 2):
     # Mask Polygon
     # Pad to ensure proper polygons for masks that touch image edges.
     padded_mask = np.zeros(
-        shapepadding, dtype=np.uint8)
+        shapepadding, dtype=mask.dtype)
     padded_mask[padding_factor//2:-padding_factor//2, padding_factor//2:-padding_factor//2] = mask
     #contours = find_contours(padded_mask, 0.5)
     return padded_mask
