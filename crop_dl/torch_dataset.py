@@ -53,7 +53,7 @@ class InstaSegemenTorchDataset(Dataset):
 
     def __getitem__(self, index):
         
-        from crop_dl.dataset_utils import InstanceSegmentation
+        from .dataset_utils import InstanceSegmentation
         instancedata = InstanceSegmentation(self.root_dir ,
                                             self.cococataset,index,
                                             random_parameters = self.random_transform_params,

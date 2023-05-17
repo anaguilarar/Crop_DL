@@ -46,6 +46,8 @@ def contours_from_image(img, kernel_size = (7,7), lowerlimit = 60,#(120,120,120)
     ret, thresh = cv2.threshold(imgray, lowerlimit, upperlimit, 0)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, kernel_size)
     morph = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    if morph.dtype == float:
+        morph = morph.astype(np.uint8)
     contours, _ = cv2.findContours(morph, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     trend = np.quantile([cv2.contourArea(cnt) for cnt in contours],areathreshhold)
 

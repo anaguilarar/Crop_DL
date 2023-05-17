@@ -143,6 +143,8 @@ class RiceSeedsCounting(object):
                 print("The option is not valid, try again")
                 
         else:
+            if len(msks_preds.shape) == 2:
+                msks_predsmsks_preds = np.expand_dims(msks_predsmsks_preds, axis=0)
             self.msks_preds = msks_preds
             self.bbs_preds = bbs_preds
         

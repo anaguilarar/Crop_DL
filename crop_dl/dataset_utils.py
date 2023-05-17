@@ -196,6 +196,7 @@ class ImageAugmentation(object):
                 'multitr': self.multi_transform,
                 'flip': self.flip_image,
                 'hsv': self.hsv
+                ##  TODO: BLUR
             }
         
 
