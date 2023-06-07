@@ -6,6 +6,7 @@ import zipfile
 from io import BytesIO
 import cv2
 import torch
+from ..decorators import check_image_size
 
 def filter_files_usingsuffix(filesinside, path, suffix = 'pt'):
     """
@@ -77,20 +78,13 @@ def check_weigth_path(path, suffix = 'h5', weights_path = 'weights'):
     
     return path
 
-def image_to_tensor(img, size):
+
+@check_image_size
+def image_to_tensor(image, outputsize = (256,256)):
     
-    if img.shape[0] == 3:
-        img = img.swapaxes(0,1).swapaxes(1,2)
-        
-    if img.shape[0] != size[0] or img.shape[1] != size[1]:
-        resimg = cv2.resize(img.copy(), size)
-    else:
-        resimg = img.copy()
+    if image.shape[0] != 3:
+        imgtensor = torch.from_numpy(image.swapaxes(2,1).swapaxes(0,1)/255).float()
+    elif image.shape[0] == 3:
+        imgtensor = torch.from_numpy(image/255).float()
     
-    #resimg
-    if resimg.shape[0] != 3:
-        imgtensor = torch.from_numpy(resimg.swapaxes(2,1).swapaxes(0,1)/255).float()
-    elif resimg.shape[0] == 3:
-        imgtensor = torch.from_numpy(resimg/255).float()
-        
-    return imgtensor     
+    return imgtensor

@@ -117,7 +117,7 @@ def draw_frame(img, bbbox, dictlabels = None, default_color = None, bbtype = Non
 
 
 def plot_segmenimages(img, maskimg, boxes = None, figsize = (10, 8), 
-                      bbtype = None, only_image = False, inverrgbtorder = True,**kwargs):
+                      bbtype = None, only_image = False, inverrgbtorder = True,fontsize= 18, **kwargs):
     
     datato = img.copy()
     heatmap = cv2.applyColorMap(np.array(maskimg).astype(np.uint8), 
@@ -142,11 +142,11 @@ def plot_segmenimages(img, maskimg, boxes = None, figsize = (10, 8),
             order = [0,1,2]
             
         ax[0].imshow(datato[:,:,order],vmin=0,vmax=1)
-        ax[0].set_title('Real',fontsize = 18)
+        ax[0].set_title('Real',fontsize = fontsize)
         ax[1].imshow(maskimg,vmin=0,vmax=1)
-        ax[1].set_title('Segmentation',fontsize = 18)
+        ax[1].set_title('Segmentation',fontsize = fontsize)
 
-        ax[2].set_title('Overlap',fontsize = 18)
+        ax[2].set_title('Overlap',fontsize = fontsize)
         ax[2].imshow(output[:,:,order])
             
         

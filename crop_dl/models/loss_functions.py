@@ -2,6 +2,27 @@
 import torch
 import torch.nn as nn
 
+import torch.nn.functional as F
+import torch
+
+### takaen from https://nsr-9.hatenablog.jp/entry/2021/09/05/100000
+
+def dice_loss(pred, target, smooth = 1. ):
+    pred = pred. contiguous()
+    target = target. contiguous()
+    intersection = (pred * target).sum(dim= 2 ).sum(dim= 2 )
+    loss = ( 1 - (( 2. * intersection + smooth) / (pred.sum(dim= 2 ).sum(dim= 2 ) + target.sum(dim= 2 ).sum(dim= 2 ) + smooth) ))
+    return loss.mean()
+
+
+def calc_loss(pred, target, metrics= None , bce_weight= 0.5 ):
+     # Mix Dice Loss and Categorical Cross Entropy for a nice touch
+    bce = F.binary_cross_entropy_with_logits(pred, target)
+    pred = torch.sigmoid(pred)
+    dice = dice_loss(pred, target)
+    loss = bce * bce_weight + dice * ( 1 - bce_weight)
+    return loss
+
 ### taken from https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/models/networks.py
 ##############################################################################
 class GANLoss(nn.Module):

@@ -484,13 +484,9 @@ class ImageData(ImageAugmentation):
         else:
             self.orig_imgname = "image"
 
-        try:
-            img = cv2.imread(path)
-            super().__init__(img, **kwargs)
-        
-        except:
-            raise ValueError('check image filename')
-    
+        assert os.path.exists(path) #check image filename
+        img = cv2.imread(path)
+        super().__init__(img, **kwargs)
 
 
 class MultiChannelImage(ImageAugmentation):
@@ -782,6 +778,180 @@ class SegmentationImages(ImageData):
     
 
 ### instance segmentation
+
+
+class SegmentationImagesCoCo(ImageData):
+
+    
+    _cocosuffix = '.json'
+    _list_transforms = []
+    _list_not_transform = ['clahe', 'hsv']
+    
+    @property
+    def imgs_len(self):
+        
+        return self._cocoimgs_len()
+    
+            
+    @property
+    def target_data(self):
+        imgs_data = {'raw': self._mask_imgid}
+        newdata = self.transform_target_image()
+        if len(list(newdata.keys()))>0:
+            imgs_data.update(newdata)
+
+        return imgs_data
+
+
+    @property
+    def _mask_imgid(self):
+        ### it must be a cocodataset
+        assert self.cocodataset
+            
+        masks = np.array([np.array(self._annotation_cocodata.annToMask(ann) * ann["category_id"]
+                        ) for ann in self.anns])
+        
+        if len(masks.shape) == 1:
+            masks =  np.expand_dims(np.zeros(self.img_data.shape[:2]), axis = 0)    
+    
+        return masks
+
+    def random_multime_transform(self, augfun = None, verbose = False):
+        if self._onlythesetransforms is None:
+            availableoptions = list(self._run_default_transforms.keys())+['raw']
+        else:
+            availableoptions = self._onlythesetransforms+['raw']
+        
+        if augfun is None:
+            augfun = random.choice(availableoptions)
+        elif type(augfun) is list:
+            augfun = random.choice(augfun)
+        
+        if augfun not in availableoptions:
+            print(f"""that augmentation option is not into default parameters {availableoptions},
+                     no transform was applied""")
+            augfun = 'raw'
+
+        if augfun == 'raw':
+            imgtr = self.target_data['raw']
+            #imgtarget = self.target_data['raw'][:,:,0]
+        else:
+            imgtr = perform_kwargs(self._run_default_transforms[augfun])
+
+        if verbose:
+            print('{} was applied'.format(augfun))
+        #imgtr = self._scale_image(imgtr)
+        return imgtr
+
+
+
+    def tranform_function(self, tr_name):
+        """compute transformation for targets"""
+        if len(self._mask_imgid.shape) == 1:
+            trmask =  np.expand_dims(np.zeros(self.img_data.shape[:2]), axis = 0)    
+        
+        else:
+            trmask = np.zeros(self._mask_imgid.shape)
+        
+        for i,mask in enumerate(self._mask_imgid):
+            
+            if tr_name == 'multitr':
+                
+                params = self.tr_paramaters[tr_name]
+                paramslist = [partr for partr in list(params.keys()) if partr not in self._list_not_transform]
+                filteredparams = {}
+                for partr in paramslist:
+                    filteredparams[partr] = params[partr]
+                    
+                imgtr = mask.copy()
+
+                for partr in paramslist:
+                    #print(partr)
+                    imgtr = perform(self._run_default_transforms[partr],
+                            imgtr,
+                            params[partr], False)
+                
+                trmask[i] = imgtr
+
+            else:
+                trmask[i]  =  perform(self._run_default_transforms[tr_name],
+                        mask.copy(),
+                        self.tr_paramaters[tr_name], False)
+
+        return trmask
+    
+
+    def transform_target_image(self):
+        trids = list(self.images_names.keys())
+        newimgs = {}
+        if len(trids)> 1:
+            for i in range(1,len(trids)):
+                if trids[i] not in self._list_not_transform:
+                    newtr = self.tranform_function(trids[i])
+                    newimgs[trids[i]] = newtr
+
+                else:
+                    newimgs[trids[i]] = self._mask_imgid
+        
+        return newimgs
+    
+    def plot_output(self,datatype, **kwargs):
+        if datatype in list(self.target_data.keys()):
+                
+            f = plot_segmenimages(self.imgs_data[datatype],np.max(np.stack(
+                    self.target_data[datatype]), axis = 0)*255,  
+                        bbtype = 'xminyminxmaxymax',
+                        **kwargs)
+            
+        return f
+    
+    def _cocoimgs_len(self):
+        tmpbool = True
+        i = 0
+        while tmpbool:
+            try:
+                self._annotation_cocodata.loadImgs(i)
+                i+=1
+                
+            except:
+                tmpbool = False
+        return i-1
+        
+    def __init__(self, input_path, annotation, img_id = None, 
+                    cocodataset = True, onlythese = None,**kwargs) -> None:
+        
+        from pycocotools.coco import COCO
+        
+        
+        self.input_path = input_path
+        
+        self.cocodataset = cocodataset
+        
+        ## must be a coco file
+        assert isinstance(annotation, COCO)
+        
+        self._annotation_cocodata = copy.deepcopy(annotation)
+        img_data = self._annotation_cocodata.loadImgs(img_id)
+        
+        fn = img_data[0]['file_name']
+        
+        assert len(img_data) == 1
+        
+        self.annotation_ids = self._annotation_cocodata.getAnnIds(
+                    imgIds=img_data[0]['id'], 
+                    catIds=1, 
+                    iscrowd=None
+                )
+        self.anns = self._annotation_cocodata.loadAnns(self.annotation_ids)
+        self.numobjs = len(self.anns)
+        self._onlythesetransforms = onlythese
+        
+        super(SegmentationImagesCoCo, self).__init__(
+            path = os.path.join(self.input_path, 
+                                                fn), 
+                            img_id = fn, **kwargs)
+
+    
 
 class InstanceSegmentation(ImageData):
     
