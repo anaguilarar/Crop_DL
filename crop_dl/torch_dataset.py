@@ -2,12 +2,15 @@
 import torch
 from torch.utils.data import Dataset
 import os
+import pandas as pd
+import cv2
 
 import tqdm
 import numpy as np
 #from crop_dl.dataset_utils import InstanceSegmentation
 import  torchvision.transforms as T
 from .dataset import SplitIds, FolderWithImages
+from .dataset_utils import MultiChannelImage,standard_scale
 
 def coco_total_imgs(cocodataset):
     tmpbool = True
@@ -195,3 +198,201 @@ class SegmenTorchDataset(Dataset):
             imgtensor = self.normalize(imgtensor)
 
         return imgtensor, target_image
+    
+
+
+### Classification
+def data_standarization(values, meanval = None, stdval = None):
+    if meanval is None:
+        meanval = np.nanmean(values)
+    if stdval is None:
+        stdval = np.nanstd(values)
+    
+    return (values - meanval)/stdval
+
+def data_normalization(data, minval = None, maxval = None):
+    if minval is None:
+        minval = np.nanmin(data)
+    if maxval is None:
+        maxval = np.nanmax(data)
+    
+    return (data - minval) / ((maxval - minval))
+
+def transform_listarrays(values, varchanels = None, scaler = None, scalertype = 'standarization'):
+    
+    if varchanels is None:
+        varchanels = list(range(len(values)))
+    if scalertype == 'standarization':
+        if scaler is None:
+            scaler = {chan:[np.nanmean(values[i]),
+                            np.nanstd(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_standarization
+    elif scalertype == 'normalization':
+        if scaler is None:
+            scaler = {chan:[np.nanmin(values[i]),
+                            np.nanmax(values[i])] for i, chan in enumerate(varchanels)}
+        fun = data_normalization
+    
+    else:
+        raise ValueError('{} is not an available option')
+    
+    valueschan = {}
+    for i, channel in enumerate(varchanels):
+        if channel in list(scaler.keys()):
+            val1, val2 = scaler[channel]
+            scaleddata = fun(values[i], val1, val2)
+            valueschan[channel] = scaleddata
+    
+    return valueschan    
+
+def customdict_transformation(customdict, scaler, scalertype = 'standarization'):
+    """scale customdict
+
+    Args:
+        customdict (dict): custom dict
+        scaler (dict): dictionary that contains the scalar values per channel. 
+                       e.g. for example to normalize the red channel you will provide min and max values {'red': [1,255]}  
+        scalertype (str, optional): string to mention if 'standarization' or 'normalization' is gonna be applied. Defaults to 'standarization'.
+
+    Returns:
+        xrarray: xrarraytransformed
+    """
+    
+
+    varchanels = list(customdict['variables'].keys())
+    values =[customdict['variables'][i] for i in varchanels]
+    trvalues = transform_listarrays(values, varchanels = varchanels, scaler = scaler, scalertype =scalertype)
+    for chan in list(trvalues.keys()):
+        customdict['variables'][chan] = trvalues[chan]
+        
+    return customdict
+        
+import pickle
+import os
+
+def get_data_from_dict(data, onlythesechannels = None):
+            
+        dataasarray = []
+        channelsnames = list(data['variables'].keys())
+        
+        if onlythesechannels is not None:
+            channelstouse = [i for i in onlythesechannels if i in channelsnames]
+        else:
+            channelstouse = channelsnames
+        for chan in channelstouse:
+            dataperchannel = data['variables'][chan] 
+            dataasarray.append(dataperchannel)
+
+        return np.array(dataasarray)
+    
+class C_TBDataSet:
+    
+    def get_data(self, index, onlythesechannels = None):
+        
+        file = self.listfiles[index]
+        
+        customdict = self.mlcclass._read_data(
+            path=os.path.dirname(file), 
+            fn = os.path.basename(file),
+            suffix='pickle')
+        
+        if self.scalar is not None:
+            customdict = customdict_transformation(customdict, self.scalar)
+            
+        npdata = self.mlcclass.to_array(
+            customdict = customdict,
+            onlythesechannels = onlythesechannels)
+        
+        npdata[np.isnan(npdata)] = 0
+        targetdata = self.targetvalues[index]
+        if self.ids is not None:
+            idval = self.ids[index]
+        else:
+            idval = None
+    
+        return npdata, targetdata, idval
+    
+    def __init__(self, df, 
+                 targetcolumn,
+                 mlcclass,
+                 scalar = None,
+                 columnpathname = 'path', columnids = None) -> None:
+        
+        self.ids = None
+        self.df_path = df.reset_index()
+        self.scalar = scalar
+        assert targetcolumn in df.columns
+        
+        self.targetvalues = df[targetcolumn].values
+        self.listfiles = df[columnpathname].values
+        assert len(self.listfiles)>1
+        if columnids:
+            self.ids = df[columnids].values
+        
+        self.mlcclass = mlcclass
+
+
+class ClassificationTorchDataset(Dataset):
+    
+    def __init__(self, 
+                 dftarget,
+                 targetcolumn,
+                 mlcclass,
+                 evaluation = False,
+                 scalar = None, 
+                 onlythesefeatures = None, 
+                 depthfirst = True,
+                 idcolumnname = None
+                 ):
+        """_summary_
+
+        Args:
+            dftarget (_type_): _description_
+            targetcolumn (_type_): _description_
+            evaluation (bool, optional): _description_. Defaults to False.
+            scalar (_type_, optional): _description_. Defaults to None.
+            onlythesefeatures (_type_, optional): _description_. Defaults to None.
+            depthfirst (bool, optional): _description_. Defaults to True.
+            idcolumnname (_type_, optional): _description_. Defaults to None.
+        """
+        self.scalar = scalar
+        self.evaluation = evaluation
+        self.idcolumnname = idcolumnname
+        assert type(dftarget) is pd.DataFrame
+        self.data = C_TBDataSet(dftarget, targetcolumn,
+                                mlcclass,
+                                scalar,
+            columnids = self.idcolumnname)
+        self.depthfirst = depthfirst
+        self.nrows = dftarget.shape[0]
+        self.onlythesefeatures = onlythesefeatures 
+    
+        
+    def __len__(self):
+        return self.nrows
+
+    def __getitem__(self, index):
+        
+        img, target, idval = self.data.get_data(
+            index, self.onlythesefeatures)
+        self._idval = idval 
+        img = np.array([cv2.resize(img[i], (224,224)) for i in range(img.shape[0])])
+        multchan = MultiChannelImage(img)
+        if self.evaluation:
+            randtr = multchan.random_transform(augfun='raw')
+        else:
+            try:
+                randtr = multchan.random_transform()
+            except:
+                randtr = multchan.random_transform(augfun='raw')
+        
+                ### transform to torch tensor
+        
+        if self.depthfirst:
+            imgtensor = torch.from_numpy(randtr).float()
+        else:
+            imgtensor = torch.from_numpy(randtr.swapaxes(0,1)).float()
+        
+        targetten = torch.from_numpy(np.expand_dims(np.array(target), 0)).float()
+        
+        return imgtensor, targetten 

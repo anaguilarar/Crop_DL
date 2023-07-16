@@ -491,6 +491,41 @@ class ImageData(ImageAugmentation):
 
 class MultiChannelImage(ImageAugmentation):
 
+        
+    """
+    A class used to transform numpy 3D arrays (C, X, Y)
+
+    ...
+
+    Attributes
+    ----------
+    orig_imgname : str
+        image name
+    mlchannel_data : numpy array
+        the image data
+    tr_paramaters : dict
+        transformation paramaters
+    _new_images : dict
+        contains the transformed data
+
+    Methods
+    -------
+    says(sound=None)
+        Prints the animals name and what sound it makes
+    """
+    
+    @property
+    def _run_multichannel_transforms(self):
+        return  {
+                'rotation': self.rotate_multiimages,
+                'zoom': self.expand_multiimages,
+                #'clahe': self.clahe,
+                'shift': self.shift_multiimages,
+                'multitr': self.multitr_multiimages,
+                'flip': self.flip_multiimages
+            }
+    
+
     @property
     def imgs_data(self):
         imgdata = {'raw': self.mlchannel_data}
@@ -514,6 +549,23 @@ class MultiChannelImage(ImageAugmentation):
                 imgnames.update(currentdata)
 
         return imgnames
+    
+    def _scale_multichannels_data(self,img, method = 'standarization'):
+        if self.scaler is not None:
+                        
+            if method == 'standarization':
+                
+                datascaled = []
+                for z in range(self.mlchannel_data.shape[0]):
+                    datascaled.append(standard_scale(
+                            img[z].copy(),
+                            meanval = self.scaler[z][0], 
+                            stdval = self.scaler[z][1]))
+
+        else:
+            datascaled = img.copy()
+            
+        return datascaled
     
     def _tranform_channelimg_function(self, img, tr_name):
 
@@ -592,9 +644,38 @@ class MultiChannelImage(ImageAugmentation):
         
         return self._new_images['multitr']
 
+    def random_transform(self, augfun = None, verbose = False):
+        availableoptions = list(self._run_multichannel_transforms.keys())+['raw']
+        
+        if augfun is None:
+            augfun = random.choice(availableoptions)
+        elif type(augfun) is list:
+            augfun = random.choice(augfun)
+        
+        if augfun not in availableoptions:
+            print(f"""that augmentation option is not into default parameters {availableoptions},
+                     no transform was applied""")
+            augfun = 'raw'
+        
+        
+        if augfun == 'raw':
+            imgtr = self.mlchannel_data.copy()
+            imgtr = self._scale_multichannels_data(imgtr)
+            
+        else:
+            imgtr = perform_kwargs(self._run_multichannel_transforms[augfun])
+            imgtr = self._scale_multichannels_data(imgtr)
+        
+        if verbose:
+            print('{} was applied'.format(augfun))
+        #imgtr = self._scale_image(imgtr)
+        return imgtr
+    
 
     def __init__(self, img, img_id = None, channels_order = 'first', **kwargs) -> None:
-
+        
+        self.scaler = None
+        
         if img_id is not None:
             self.orig_imgname = img_id
         else:
@@ -608,6 +689,7 @@ class MultiChannelImage(ImageAugmentation):
         self.mlchannel_data = img
 
         super().__init__(self._initimg, **kwargs)
+    
     
 
 def scale_mtdata(npdata,
@@ -1151,4 +1233,158 @@ class InstanceSegmentation(ImageData):
                              img_id = fn, **kwargs)
             
 
+
+### regression
+
+
+class AugmentMTdata(MT_Imagery,MultiChannelImage):
+
+
+
+    @property
+    def _run_random_choice(self):
+        return  {
+                'rotation': self.rotate_tempimages,
+                'zoom': self.expand_tempimages,
+                'shift': self.shift_multi_tempimages,
+                'multitr': self.multtr_tempimages,
+                'flip': self.flip_tempimages
+            }
+
+    def _scale_image(self, img):
+        
+
+        if self.scaler_params is not None:
+            ## data D C X Y
+            img= scale_mtdata(img,self.features,
+                                self.scaler_params['scaler'],
+                                scale_z = self.scaler_params['scale_3dimage'], 
+                                name_3dfeature = self.scaler_params['name_3dfeature'], 
+                                method=self.scaler_params['method'],
+                                shapeorder = self._formatorder)
+
+        return img
+
+
+    def _multi_timetransform(self, tranformn,  **kwargs):
+        imgs= [perform_kwargs(self._run_multichannel_transforms[tranformn],
+                     img = self._initdate,
+                     **kwargs)]
+
+        for i in range(1,self.npdata.shape[1]):
+
+            if tranformn != 'multitr':
+                
+                r = perform(self._run_multichannel_transforms[tranformn],
+                               self.npdata[:,i,:,:],
+                               self.tr_paramaters[tranformn],
+                               False,
+                               )
+            else:
+                r = perform_kwargs(self._run_multichannel_transforms[tranformn],
+                               img=self.npdata[:,i,:,:],
+                               params = self.tr_paramaters[tranformn],
+                               update = False,
+                               )
+            imgs.append(r)
+
+        imgs = np.stack(imgs, axis = 0)
+
+        imgs = self._scale_image(imgs)
+
+        self._new_images[tranformn] = imgs
+        
+        return imgs
+
+    def shift_multi_tempimages(self, shift=None, max_displacement=None):
+        return self._multi_timetransform(tranformn = 'shift',
+                                        shift= shift, 
+                                        max_displacement= max_displacement)
+
+    def expand_tempimages(self, ratio=None):
+        return self._multi_timetransform(tranformn = 'zoom', ratio = ratio)
+
+    def rotate_tempimages(self, angle=None):
+        return self._multi_timetransform(tranformn = 'rotation', angle = angle)
     
+    def flip_tempimages(self, flipcode=None):
+        return self._multi_timetransform(tranformn = 'flip', flipcode = flipcode)
+    
+
+    def multtr_tempimages(self, img=None, chain_transform=['flip','zoom','shift', 'rotation', ], params=None):
+        return self._multi_timetransform(tranformn = 'multitr', 
+                                         chain_transform= chain_transform, 
+                                         params = params)
+
+        
+    def random_multime_transform(self, augfun = None, verbose = False):
+        availableoptions = list(self._run_multichannel_transforms.keys())+['raw']
+        
+        if augfun is None:
+            augfun = random.choice(availableoptions)
+        elif type(augfun) is list:
+            augfun = random.choice(augfun)
+        
+        if augfun not in availableoptions:
+            print(f"""that augmentation option is not into default parameters {availableoptions},
+                     no transform was applied""")
+            augfun = 'raw'
+
+        if augfun == 'raw':
+            imgtr = self.npdata.swapaxes(0,1)
+            imgtr = self._scale_image(imgtr)
+        else:
+            imgtr = perform_kwargs(self._run_random_choice[augfun])
+
+        if verbose:
+            print('{} was applied'.format(augfun))
+        #imgtr = self._scale_image(imgtr)
+        return imgtr
+
+    def __init__(self, 
+                 data=None, 
+                 fromfile=None, 
+                 onlythesefeatures=None,
+                 onlythesedates = None,
+                 img_id=None, 
+                 formatorder = 'DCHW',
+                 channelslast = False,
+                 removenan = True,
+                 image_scaler = None,
+                 scale_3dimage = False,
+                 name_3dfeature = 'z',
+                 scale_method = 'minmax',
+                 **kwargs) -> None:
+
+        if image_scaler is not None:
+            self.scaler_params = {'scaler':image_scaler,
+                                  'method': scale_method,
+                                  'scale_3dimage': scale_3dimage,
+                                  'name_3dfeature': name_3dfeature}
+        else:
+            self.scaler_params = None
+        MT_Imagery.__init__(self,data, fromfile, onlythesefeatures = onlythesefeatures)
+
+        self.npdata = copy.deepcopy(self.to_npvalues(dataformat = formatorder, chanelslast = channelslast))
+
+        if removenan:
+            self.npdata[np.isnan(self.npdata)] = 0
+        self._formatorder = formatorder
+        if formatorder == "DCHW":
+            self.npdata = self.npdata.swapaxes(1,0)
+            channelsorder = 'first'
+        elif formatorder == "CDHW":
+            channelsorder = 'first'
+        elif channelslast:
+            channelsorder = 'last'
+
+        if onlythesedates is not None:
+            self.npdata = self.npdata[:,onlythesedates,:,:]
+
+        #if image_scaler is not None:
+        #    self.npdata = scale_mtdata(self,[image_scaler[0],image_scaler[1]],
+        #                            scale_z = scale_3dimage, name_3dfeature = name_3dfeature, method=scale_method)
+
+        self._initdate = copy.deepcopy(self.npdata[:,0,:,:])
+
+        MultiChannelImage.__init__(self,img = self._initdate, img_id= img_id, channels_order = channelsorder, **kwargs)
