@@ -257,7 +257,6 @@ def customdict_transformation(customdict, scaler, scalertype = 'standarization')
     Returns:
         xrarray: xrarraytransformed
     """
-    
 
     varchanels = list(customdict['variables'].keys())
     values =[customdict['variables'][i] for i in varchanels]
@@ -285,61 +284,11 @@ def get_data_from_dict(data, onlythesechannels = None):
 
         return np.array(dataasarray)
     
-class C_TBDataSet:
-    
-    def get_data(self, index, onlythesechannels = None):
-        
-        file = self.listfiles[index]
-        
-        customdict = self.mlcclass._read_data(
-            path=os.path.dirname(file), 
-            fn = os.path.basename(file),
-            suffix='pickle')
-        
-        if self.scalar is not None:
-            customdict = customdict_transformation(customdict, self.scalar)
-            
-        npdata = self.mlcclass.to_array(
-            customdict = customdict,
-            onlythesechannels = onlythesechannels)
-        
-        npdata[np.isnan(npdata)] = 0
-        targetdata = self.targetvalues[index]
-        if self.ids is not None:
-            idval = self.ids[index]
-        else:
-            idval = None
-    
-        return npdata, targetdata, idval
-    
-    def __init__(self, df, 
-                 targetcolumn,
-                 mlcclass,
-                 scalar = None,
-                 columnpathname = 'path', columnids = None) -> None:
-        
-        self.ids = None
-        self.df_path = df.reset_index()
-        self.scalar = scalar
-        assert targetcolumn in df.columns
-        
-        self.targetvalues = df[targetcolumn].values
-        self.listfiles = df[columnpathname].values
-        assert len(self.listfiles)>1
-        if columnids:
-            self.ids = df[columnids].values
-        
-        self.mlcclass = mlcclass
-
-
 class ClassificationTorchDataset(Dataset):
     
     def __init__(self, 
-                 dftarget,
-                 targetcolumn,
-                 mlcclass,
+                 datagenerator,
                  evaluation = False,
-                 scalar = None, 
                  onlythesefeatures = None, 
                  depthfirst = True,
                  idcolumnname = None
@@ -355,21 +304,17 @@ class ClassificationTorchDataset(Dataset):
             depthfirst (bool, optional): _description_. Defaults to True.
             idcolumnname (_type_, optional): _description_. Defaults to None.
         """
-        self.scalar = scalar
+
         self.evaluation = evaluation
         self.idcolumnname = idcolumnname
-        assert type(dftarget) is pd.DataFrame
-        self.data = C_TBDataSet(dftarget, targetcolumn,
-                                mlcclass,
-                                scalar,
-            columnids = self.idcolumnname)
+
+        self.data = datagenerator
         self.depthfirst = depthfirst
-        self.nrows = dftarget.shape[0]
         self.onlythesefeatures = onlythesefeatures 
     
         
     def __len__(self):
-        return self.nrows
+        return self.data.nrows
 
     def __getitem__(self, index):
         
