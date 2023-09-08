@@ -1,5 +1,6 @@
 from PIL import Image, ImageOps, ImageFilter
 from skimage.transform import SimilarityTransform
+from skimage.filters import difference_of_gaussians
 from skimage.draw import line_aa
 from skimage.transform import warp
 from pathlib import Path
@@ -362,6 +363,33 @@ def change_images_contrast(image,
 
     return ims_contrasted, comb
 
+
+### https://scikit-image.org/docs/stable/auto_examples/filters/plot_dog.html
+def diff_guassian_img(img, low_sigma = 1, high_sigma=[30,40,50,60,70]):
+    """
+    difference between blurred images    
+
+    Args:
+        img (_type_): _description_
+        low_sigma (int, optional): _description_. Defaults to 1.
+        high_sigma (list, optional): _description_. Defaults to [30,40,50,60,70].
+
+    Returns:
+        _type_: _description_
+    """
+    if type(high_sigma) == list:
+        # pick angles at random
+        high_sigma = random.choice(high_sigma)
+    
+    if len(img.shape) == 2 or img.shape[2] == 1:
+        img = difference_of_gaussians(img, low_sigma, high_sigma)
+    else:
+        imgnew = np.zeros(img.shape)
+        for i in range(img.shape[0]):
+            imgnew[i] = difference_of_gaussians(img[i], low_sigma, high_sigma)
+        img = imgnew
+        
+    return img, [str(high_sigma)]
 
 
 ## taken from https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py
