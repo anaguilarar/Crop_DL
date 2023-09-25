@@ -793,7 +793,7 @@ def scale_mtdata(npdata,
 
 
 
-class MultiTimeImage(MultiChannelImage):
+class MultiTimeTransform(MultiChannelImage):
 
 
     @property
@@ -880,7 +880,7 @@ class MultiTimeImage(MultiChannelImage):
 
         
     def random_multime_transform(self, augfun = None, verbose = False):
-        availableoptions = list(self._run_multichannel_transforms.keys())+['raw']
+        availableoptions = self._availableoptions
         
         if augfun is None:
             augfun = random.choice(availableoptions)
@@ -929,6 +929,7 @@ class MultiTimeImage(MultiChannelImage):
                  scale_3dimage = False,
                  name_3dfeature = 'z',
                  scale_method = 'minmax',
+                 transform_options = None,
                  **kwargs) -> None:
         
         """
@@ -982,8 +983,9 @@ class MultiTimeImage(MultiChannelImage):
 
         self._initdate = copy.deepcopy(self.npdata[:,0,:,:])
 
-        MultiChannelImage.__init__(self,img = self._initdate, img_id= img_id, channels_order = channelsorder, **kwargs)
-
+        MultiChannelImage.__init__(self,img = self._initdate, img_id= img_id, 
+                                   channels_order = channelsorder, transforms= transform_options,**kwargs)
+        
 
 
 
