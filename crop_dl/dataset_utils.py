@@ -215,11 +215,10 @@ class ImageAugmentation(object):
                 'clahe': random.randint(0,30),
                 'shift': random.randint(5, 20),
                 'flip': random.choice([-1,0,1]),
-                'hsv': [random.randint(0,30),
-                        random.randint(0,30),
-                        random.randint(0,30)],
-                'gaussian': random.choice([30,40,50,60,70,80])
-                
+                'gaussian': random.choice([30,40,50,60,70,80]),
+                'hsv': [list(range(-30,30,5)),
+                        list(range(-20,20,5)), 
+                        list(range(-20,20,5))]
             }
         
         if self._init_random_parameters is None:
