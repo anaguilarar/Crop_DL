@@ -17,7 +17,20 @@ import scipy.signal
 import cv2
 import warnings
 
+def cv2_array_type(arrayimage):
+    
+    imgcvtype = arrayimage.copy()
+    if not np.max(imgcvtype)>120:
+        imgcvtype = imgcvtype*255
+        
+    imgcvtype[imgcvtype<0] = 0
+    imgcvtype[imgcvtype>255] = 255
+    imgcvtype = imgcvtype.astype(np.uint8)
 
+    if imgcvtype.shape[0]<=3:
+        imgcvtype = imgcvtype.swapaxes(0,1).swapaxes(1,2)
+        
+    return imgcvtype
 
 def pad_images(mask, padding_factor = 2):
 
@@ -207,6 +220,29 @@ def image_zoom(img, zoom_factor=0, channels_first = False, paddlingvalue = 0):
     assert result.shape[0] == height and result.shape[1] == width
     result[result<0.000001] = 0.0
     return result
+
+
+def illumination_shift(img, valuel = []):
+     
+
+    dtype = img.dtype
+    # pick illumination values randomly
+    if isinstance(valuel, list):
+        valuel = random.choice(valuel)
+    else:
+        valuel = valuel
+        
+    imgrgb = cv2_array_type(img)
+        
+    imgl,_ = shift_hsv(imgrgb, hue_shift = 0, sat_shift=0, 
+                       val_shift = valuel)
+
+    if img.shape[0] == 3:
+        imgl = imgl.swapaxes(2,1).swapaxes(1,0)
+    if np.max(img) < 2:
+        imgl = imgl/255.
+            
+    return imgl.astype(dtype)
 
 def image_rotation(img, angle = []):
             # pick angles at random
@@ -450,9 +486,11 @@ def shift_hsv(img, hue_shift, sat_shift, val_shift):
     if val_shift != 0:
         lut_val = np.arange(0, 256, dtype=np.uint8)
         lut_val = np.clip(lut_val + val_shift, 0, 255).astype(dtype)
+        if val_shift>0:
+            lut_val[np.where(lut_val == 255)[0][0]:] = 255
         val = cv2.LUT(val, lut_val)
 
-    img = cv2.merge((hue, sat, val)).astype(dtype)
+    img = np.stack((hue, sat, val), axis = 2).astype(dtype)
     img = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
     return img, ['{}_{}_{}'.format(hue_shift, sat_shift, val_shift)]
 ## rotate image

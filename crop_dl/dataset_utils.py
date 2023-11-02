@@ -1,7 +1,7 @@
 
 import random
 
-from .image_functions import image_rotation,image_zoom,randomly_displace,clahe_img, image_flip,shift_hsv,diff_guassian_img
+from .image_functions import image_rotation,image_zoom,randomly_displace,clahe_img, image_flip,shift_hsv,diff_guassian_img,illumination_shift
 from .plt_utils import plot_segmenimages
 import cv2
 import os
@@ -196,7 +196,8 @@ class ImageAugmentation(object):
                 'multitr': self.multi_transform,
                 'flip': self.flip_image,
                 'hsv': self.hsv,
-                'gaussian': self.diff_gaussian_image
+                #'gaussian': self.diff_gaussian_image,
+                'illumination':self.change_illumination
             
             }
         
@@ -218,7 +219,8 @@ class ImageAugmentation(object):
                 'gaussian': random.choice([30,40,50,60,70,80]),
                 'hsv': [list(range(-30,30,5)),
                         list(range(-20,20,5)), 
-                        list(range(-20,20,5))]
+                        list(range(-20,20,5))],
+                'illumination':random.choice(list(range(-50,50,5)))
             }
         
         if self._init_random_parameters is None:
@@ -332,6 +334,22 @@ class ImageAugmentation(object):
             
             self.updated_paramaters(tr_type = 'hsv')
             self._new_images['hsv'] = imgtr
+
+        return imgtr
+    
+    def change_illumination(self, img = None, illuminationparams =None, update = True):
+        if img is None:
+            img = copy.deepcopy(self.img_data)
+        if illuminationparams is None:
+            illuminationparams = self._random_parameters['illumination']
+            
+        imgtr = illumination_shift(img,valuel = illuminationparams)
+        
+        self._transformparameters['illumination'] = illuminationparams
+        if update:
+            
+            self.updated_paramaters(tr_type = 'illumination')
+            self._new_images['illumination'] = imgtr
 
         return imgtr
     
@@ -541,8 +559,8 @@ class MultiChannelImage(ImageAugmentation):
         return  {
                 'rotation': self.rotate_multiimages,
                 'zoom': self.expand_multiimages,
-                #'clahe': self.clahe_multiimages,
-                'gaussian': self.diff_guassian_multiimages,
+                'illumination': self.diff_illumination_multiimages,
+                #'gaussian': self.diff_guassian_multiimages,
                 'shift': self.shift_multiimages,
                 'multitr': self.multitr_multiimages,
                 'flip': self.flip_multiimages
@@ -613,16 +631,23 @@ class MultiChannelImage(ImageAugmentation):
             trimgs = img
         else:
             trimgs = self.mlchannel_data
+        if tranformid != 'illumination':
+            
+            imgs= [perform_kwargs(self._run_default_transforms[tranformid],
+                        img = trimgs[0],
+                        **kwargs)]
+            
+            for i in range(1,trimgs.shape[0]):
+                r = self._tranform_channelimg_function(trimgs[i],tranformid)
+                imgs.append(r)
 
-        imgs= [perform_kwargs(self._run_default_transforms[tranformid],
-                     img = trimgs[0],
-                     **kwargs)]
-         
-        for i in range(1,trimgs.shape[0]):
-            r = self._tranform_channelimg_function(trimgs[i],tranformid)
-            imgs.append(r)
-
-        imgs = np.stack(imgs, axis = 0)
+            imgs = np.stack(imgs, axis = 0)
+            
+        else:
+            imgs= perform_kwargs(self._run_default_transforms[tranformid],
+                        img = trimgs,
+                        **kwargs)
+            
         self._new_images[tranformid] = imgs
         
         return imgs
@@ -650,6 +675,12 @@ class MultiChannelImage(ImageAugmentation):
                     tranformid = 'gaussian', high_sigma = high_sigma, update=update)
         
         return self._new_images['gaussian']
+    
+    def diff_illumination_multiimages(self, img=None, illuminationparams=None, update=True):
+        self._new_images['illumination'] = self._transform_multichannel(img=img, 
+                    tranformid = 'illumination', illuminationparams = illuminationparams, update=update)
+        
+        return self._new_images['illumination']
     
     #def clahe_multiimages(self, img= None, thr_constrast = None, update = True):
     #    self._new_images['clahe'] = self._transform_multichannel(img=img, 
@@ -801,7 +832,7 @@ class MultiTimeTransform(MultiChannelImage):
                 'rotation': self.rotate_tempimages,
                 'zoom': self.expand_tempimages,
                 'shift': self.shift_multi_tempimages,
-                #'clahe': self.clahe_tempimages,
+                'illumination': self.illumination_tempimages,
                 'gaussian': self.diff_guassian_tempimages,
                 'multitr': self.multtr_tempimages,
                 'flip': self.flip_tempimages
@@ -822,7 +853,7 @@ class MultiTimeTransform(MultiChannelImage):
         return img
 
 
-    def _multi_timetransform(self, tranformn,  **kwargs):
+    def _multi_timetransform(self, tranformn, changeparamsmlt = False, **kwargs):
         imgs= [perform_kwargs(self._run_multichannel_transforms[tranformn],
                      img = self._initdate,
                      **kwargs)]
@@ -830,13 +861,18 @@ class MultiTimeTransform(MultiChannelImage):
         for i in range(1,self.npdata.shape[1]):
 
             if tranformn != 'multitr':
+                if changeparamsmlt:
+                    params = self._random_parameters[tranformn]
+                else:
+                    params = self.tr_paramaters[tranformn]
                 
                 r = perform(self._run_multichannel_transforms[tranformn],
                                self.npdata[:,i,:,:],
-                               self.tr_paramaters[tranformn],
+                               params,
                                False,
                                )
             else:
+                
                 r = perform_kwargs(self._run_multichannel_transforms[tranformn],
                                img=self.npdata[:,i,:,:],
                                params = self.tr_paramaters[tranformn],
@@ -869,10 +905,10 @@ class MultiTimeTransform(MultiChannelImage):
     def flip_tempimages(self, flipcode=None):
         return self._multi_timetransform(tranformn = 'flip', flipcode = flipcode)
         
-    #def clahe_tempimages(self, thr_constrast=None):
-    #    return self._multi_timetransform(tranformn = 'clahe', thr_constrast = thr_constrast)
+    def illumination_tempimages(self, illuminationparams=None):
+        return self._multi_timetransform(tranformn = 'illumination', changeparamsmlt=True,illuminationparams = illuminationparams)
 
-    def multtr_tempimages(self, img=None, chain_transform=['flip','zoom','shift', 'rotation', ], params=None):
+    def multtr_tempimages(self, img=None, chain_transform=['flip','zoom','shift', 'rotation'], params=None):
         return self._multi_timetransform(tranformn = 'multitr', 
                                          chain_transform= chain_transform, 
                                          params = params)
@@ -891,6 +927,9 @@ class MultiTimeTransform(MultiChannelImage):
                      no transform was applied""")
             augfun = 'raw'
 
+        if augfun == 'illumination' and self.npdata.shape[0]!=3:
+            augfun = 'raw'
+            
         if augfun == 'raw':
             imgtr = self.npdata#.swapaxes(0,1)
             imgtr = self._return_orig_format(imgtr)
