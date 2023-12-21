@@ -9,7 +9,7 @@ import numpy as np
 
 import pickle
 import copy
-
+from typing import List, Optional, Union
 
 def get_boundingboxfromseg(mask):
     
@@ -180,7 +180,39 @@ def _generate_shiftparams(img, max_displacement = None, xshift = None,yshift = N
 
 
 class ImageAugmentation(object):
+    """
+    A class for performing image augmentation through various transformations like rotation, zoom, etc.
+    Allows randomization of parameters for each transformation and maintains a history of applied transformations.
+    """
 
+    
+    def __init__(self, img: Union[str, np.ndarray], 
+                 random_parameters: Optional[dict] = None, 
+                 multitr_chain: Optional[List[str]] = None) -> None:
+        """
+        Initializes the ImageAugmentation class with an image and optional transformation parameters.
+
+        Parameters:
+        ----------
+        img : str or ndarray
+            The path to an image file or the image data itself.
+        random_parameters : dict, optional
+            Custom parameters for random transformations.
+        multitr_chain : list, optional
+            A predefined chain of transformations to apply.
+        """
+        
+        self._transformparameters = {}
+        self._new_images = {}
+        self.tr_paramaters = {}
+        
+        self.img_data = None
+        self.img_data = cv2.imread(img) if isinstance(img, str) else copy.deepcopy(img)
+
+        self._init_random_parameters = random_parameters
+        self._multitr_chain = multitr_chain
+        
+    
     @property
     def available_transforms(self):
         return list(self._run_default_transforms.keys())
@@ -216,7 +248,7 @@ class ImageAugmentation(object):
                 'clahe': random.randint(0,30),
                 'shift': random.randint(5, 20),
                 'flip': random.choice([-1,0,1]),
-                'gaussian': random.choice([30,40,50,60,70,80]),
+                'gaussian': random.choice([20,30,40, 50]),
                 'hsv': [list(range(-30,30,5)),
                         list(range(-20,20,5)), 
                         list(range(-20,20,5))],
@@ -235,39 +267,81 @@ class ImageAugmentation(object):
             
         return params    
     
-    #['flip','zoom','shift','rotation']
-    def multi_transform(self, img = None, 
-                        chain_transform = None,
-                         params = None, update = True):
+    def _select_random_transforms(self):
+        """
+        Randomly selects a set of transformations for multi-transform.
 
+        Returns:
+        -------
+        list
+            A list of randomly selected transformation names.
+        """
+        chain_transform = []
+        while len(chain_transform) <= 3:
+            trname = random.choice(list(self._run_default_transforms.keys()))
+            if trname != 'multitr':
+                chain_transform.append(trname)
+        return chain_transform
+
+    def updated_paramaters(self, tr_type):
+        """
+        this function updates the tranformation dictionary information
+        
+        Parameters:
+        ----------
+        tr_type : str, optional
+            transformation name
+        """
+        self.tr_paramaters.update({tr_type : self._transformparameters[tr_type]})
+    
+    
+    #['flip','zoom','shift','rotation']
+    def multi_transform(self, img: Union[str, np.ndarray] = None, 
+                        chain_transform: Optional[List[str]] = None,
+                         params: Optional[dict] = None, update: bool = True) -> np.ndarray:
+
+        """
+        Applies a chain of multiple transformations to the image.
+
+        Parameters:
+        ----------
+        img : ndarray, optional
+            The image to transform. Uses the class's internal image data if None.
+        chain_transform : list, optional
+            A list of transformation names to apply.
+        params : dict, optional
+            Parameters for each transformation in the chain.
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray
+            The transformed image.
+        """
+        
+        # Selecting transformations if not provided
         if chain_transform is None:
-            if self._multitr_chain is not None:
-                chain_transform = self._multitr_chain
-            else:
-                chain_transform = []
-                while len(chain_transform) <= 3:
-                    trname = random.choice(list(self._run_default_transforms.keys()))
-                    if trname != 'multitr':
-                        chain_transform.append(trname)
-                self._multitr_chain = chain_transform
+            chain_transform = self._multitr_chain if self._multitr_chain is not None else self._select_random_transforms()
                  
         if img is None:
             img = self.img_data
 
         imgtr = copy.deepcopy(img)
         augmentedsuffix = {}
-        for i in chain_transform:
+        
+        for transform_name in chain_transform:
             if params is None:
-                imgtr = perform_kwargs(self._run_default_transforms[i],
+                imgtr = perform_kwargs(self._run_default_transforms[transform_name],
                      img = imgtr,
                      update = False)
             else:
                 
-                imgtr = perform(self._run_default_transforms[i],
+                imgtr = perform(self._run_default_transforms[transform_name],
                      imgtr,
-                     params[i], False)
+                     params[transform_name], False)
             #if update:
-            augmentedsuffix[i] = self._transformparameters[i]
+            augmentedsuffix[transform_name] = self._transformparameters[transform_name]
         
         self._transformparameters['multitr'] = augmentedsuffix
          
@@ -278,18 +352,76 @@ class ImageAugmentation(object):
 
         return imgtr
 
-    def updated_paramaters(self, tr_type):
-        self.tr_paramaters.update({tr_type : self._transformparameters[tr_type]})
-    
-    
-    def diff_gaussian_image(self, img = None, high_sigma = None, update = True):
 
+    def apply_transformation(self, transform_func, img=None, transform_param=None, 
+                             transform_name=None, update=True):
+        """
+        Applies a specific image transformation function.
+
+        Parameters:
+        ----------
+        transform_func : function
+            The specific transformation function to apply.
+        img : ndarray, optional
+            The image to be transformed. If None, uses the class's internal image data.
+        transform_param : various types, optional
+            The parameter specific to the transformation.
+        transform_name : str, optional
+            The name of the transformation (for internal tracking).
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray
+            The transformed image.
+        """
+
+        if img is None:
+            img = self.img_data
+
+        if transform_param is None and transform_name:
+            transform_param = self._random_parameters.get(transform_name, None)
+
+        # Validate that the function is callable
+        if not callable(transform_func):
+            raise ValueError("Provided function is not callable.")
+        img_transformed = transform_func(img, transform_param)
+
+        if update and transform_name:
+            self._transformparameters[transform_name] = transform_param
+            self.updated_paramaters(tr_type=transform_name)
+            self._new_images[transform_name] = img_transformed
+
+        return img_transformed
+
+    def diff_gaussian_image(self, img: Union[str, np.ndarray] = None, 
+                            high_sigma: Optional[float] = None, update: bool = True):
+        """
+        Applies a differential Gaussian filter to the image.
+
+        Parameters:
+        ----------
+        img : ndarray, optional
+            The image to be processed. If None, uses the class's internal image data.
+        high_sigma : float, optional
+            The standard deviation for the Gaussian kernel. If None, a random value is chosen based on class parameters.
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray
+            The image after applying the differential Gaussian filter.
+        """
         
         if img is None:
             img = copy.deepcopy(self.img_data)
+            
         if high_sigma is None:
             high_sigma = self._random_parameters['gaussian']
 
+        high_sigma = max(min(high_sigma, 100), 0.1)
         
         imgtr,_ = diff_guassian_img(img,high_sigma = high_sigma)
         self._transformparameters['gaussian'] = high_sigma
@@ -303,7 +435,28 @@ class ImageAugmentation(object):
     
     
     def rotate_image(self, img = None, angle = None, update = True):
+        """
+        Rotates the given image by a specified angle.
 
+        Parameters:
+        ----------
+        img : ndarray, optional
+            The image to be rotated. If None, uses the class's internal image data.
+        angle : int, optional
+            The angle in degrees for rotating the image. If None, a random angle is chosen based on class parameters.
+        update : bool, optional
+            If True, updates the class's internal state with the result.
+
+        Returns:
+        -------
+        ndarray:
+            The rotated image.
+
+        Raises:
+        ------
+        ValueError:
+            If the input image is not in the expected format or dimensions.
+        """
         
         if img is None:
             img = copy.deepcopy(self.img_data)
@@ -473,19 +626,6 @@ class ImageAugmentation(object):
 
         return augmentedsuffix
 
-    def __init__(self, img, random_parameters = None, multitr_chain = None) -> None:
-
-        self.img_data = None
-        if isinstance(img, str):
-            self.img_data = cv2.imread(img)
-        else:
-            self.img_data = copy.deepcopy(img)
-
-        self._transformparameters = {}
-        self._new_images = {}
-        self.tr_paramaters = {}
-        self._init_random_parameters = random_parameters
-        self._multitr_chain = multitr_chain
 
 class ImageData(ImageAugmentation):
     
@@ -533,27 +673,66 @@ class MultiChannelImage(ImageAugmentation):
 
         
     """
-    A class used to transform numpy 3D arrays (C, X, Y)
+    A subclass of ImageAugmentation designed to handle multi-channel images represented as 3D numpy arrays.
 
-    ...
+    This class provides functionality to apply various image transformations, specifically tailored for images
+    with multiple channels, such as RGB, multispectral, or other types of imaging data.
 
-    Attributes
+    Attributes:
     ----------
     orig_imgname : str
-        image name
-    mlchannel_data : numpy array
-        the image data
+        The original name of the image.
+    mlchannel_data : numpy.ndarray
+        The multi-channel image data.
     tr_paramaters : dict
-        transformation paramaters
+        A dictionary of parameters for each transformation.
     _new_images : dict
-        contains the transformed data
+        A dictionary containing transformed image data.
 
-    Methods
+    Methods:
     -------
-    says(sound=None)
-        Prints the animals name and what sound it makes
+    Various transformation methods like rotate_multiimages, flip_multiimages, etc., are provided
+    to apply respective transformations to multi-channel images.
     """
     
+    def __init__(self, img, img_id = None, channels_order = 'first', transforms = None, **kwargs) -> None:
+        """
+        Initializes the MultiChannelImage class with a multi-channel image and additional parameters.
+
+        Parameters:
+        ----------
+        img : numpy.ndarray
+            The multi-channel image data to be processed.
+        img_id : str, optional
+            An identifier or name for the image. Default None.
+        channels_order : str, optional
+            Specifies the ordering of the channels in the input image. Accepted values are 'first' or 'last'.
+            'first' indicates channels are in the first dimension, 'last' indicates channels are in the last dimension.
+        transforms : list, optional
+            A list of transformation names to be available for the image. If None, all default transformations are used.
+        **kwargs : dict
+            Additional keyword arguments to be passed to the parent ImageAugmentation class.
+
+        Raises:
+        ------
+        ValueError
+            If the input image is not a numpy ndarray or if channels_order is not recognized.
+        """
+        
+        if channels_order not in ['first', 'last']:
+            raise ValueError("channels_order must be either 'first' or 'last'.")
+
+        ### set random transforms
+        self._availableoptions = list(self._run_multichannel_transforms.keys())+['raw'] if transforms is None else transforms+['raw']
+
+        self.scaler = None
+        self.orig_imgname = img_id or "image"
+        self._initimg = img[0] if channels_order == 'first' else img[:,:,0]
+       
+        self.mlchannel_data = img
+
+        super().__init__(self._initimg, **kwargs)
+        
     @property
     def _run_multichannel_transforms(self):
         return  {
@@ -592,6 +771,22 @@ class MultiChannelImage(ImageAugmentation):
         return imgnames
     
     def _scale_multichannels_data(self,img, method = 'standarization'):
+        """
+        Scales multi-channel image data using the specified method.
+
+        Parameters:
+        ----------
+        img : numpy.ndarray
+            The multi-channel image data to be scaled.
+        method : str, optional
+            The scaling method to apply. Supported methods: 'standarization'.
+
+        Returns:
+        -------
+        numpy.ndarray
+            The scaled multi-channel image data.
+        """
+        
         if self.scaler is not None:
                         
             if method == 'standarization':
@@ -609,7 +804,8 @@ class MultiChannelImage(ImageAugmentation):
         return datascaled
     
     def _tranform_channelimg_function(self, img, tr_name):
-
+        
+    
         if tr_name == 'multitr':
             params = self.tr_paramaters[tr_name]
             image = self.multi_transform(img=img,
@@ -625,8 +821,24 @@ class MultiChannelImage(ImageAugmentation):
         return image
 
     def _transform_multichannel(self, img=None, tranformid = None,  **kwargs):
+        """
+        Applies a transformation to each channel of the multi-channel image.
+
+        Parameters:
+        ----------
+        img : numpy.ndarray, optional
+            The multi-channel image data to transform. Uses class's image data if None.
+        transform_id : str
+            The identifier of the transformation to apply.
+        **kwargs
+            Additional keyword arguments for the transformation.
+
+        Returns:
+        -------
+        numpy.ndarray
+            The transformed multi-channel image data.
+        """
         
-        newimgs = {}
         if img is not None:
             trimgs = img
         else:
@@ -735,31 +947,6 @@ class MultiChannelImage(ImageAugmentation):
         #imgtr = self._scale_image(imgtr)
         return imgtr
     
-
-    def __init__(self, img, img_id = None, channels_order = 'first', transforms = None, **kwargs) -> None:
-        
-        ### set random transforms
-        if transforms is None:
-            self._availableoptions = list(self._run_multichannel_transforms.keys())+['raw']
-        else:
-            self._availableoptions = transforms+['raw']
-        
-        self.scaler = None
-        
-        if img_id is not None:
-            self.orig_imgname = img_id
-        else:
-            self.orig_imgname = "image"
-
-        if channels_order == 'first':
-            self._initimg = img[0]
-        else:
-            self._initimg = img[:,:,0]
-        
-        self.mlchannel_data = img
-
-        super().__init__(self._initimg, **kwargs)
-    
     
 
 def scale_mtdata(npdata,
@@ -833,7 +1020,7 @@ class MultiTimeTransform(MultiChannelImage):
                 'zoom': self.expand_tempimages,
                 'shift': self.shift_multi_tempimages,
                 'illumination': self.illumination_tempimages,
-                'gaussian': self.diff_guassian_tempimages,
+                #'gaussian': self.diff_guassian_tempimages,
                 'multitr': self.multtr_tempimages,
                 'flip': self.flip_tempimages
             }
